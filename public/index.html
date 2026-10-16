@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Multi-PDF ChatBot | Google Gemini & LangChain</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Marked.js for markdown rendering -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#eff6ff',
+              100: '#dbeafe',
+              500: '#3b82f6',
+              600: '#2563eb',
+              700: '#1d4ed8',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    .prose p { margin-bottom: 0.75rem; }
+    .prose ul { list-style-type: disc; margin-left: 1.25rem; margin-bottom: 0.75rem; }
+    .prose ol { list-style-type: decimal; margin-left: 1.25rem; margin-bottom: 0.75rem; }
+    .prose code { background: #f1f5f9; padding: 0.15rem 0.35rem; border-radius: 0.25rem; font-size: 0.875em; }
+    .prose pre { background: #1e293b; color: #f8fafc; padding: 1rem; border-radius: 0.5rem; overflow-x: auto; margin-bottom: 1rem; }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col md:flex-row">
+
+  <!-- Mobile Top Bar -->
+  <div class="md:hidden bg-white border-b border-slate-200 p-4 flex items-center justify-between">
+    <div class="flex items-center space-x-2 font-bold text-slate-800">
+      <span class="text-2xl">📚</span>
+      <span>Multi-PDF ChatBot</span>
+    </div>
+    <button id="mobileMenuBtn" class="p-2 text-slate-600 hover:text-slate-900 rounded-lg border border-slate-200">
+      <i data-lucide="menu" class="w-5 h-5"></i>
+    </button>
+  </div>
+
+  <!-- Sidebar -->
+  <aside id="sidebar" class="w-full md:w-80 lg:w-96 bg-white border-r border-slate-200 flex-shrink-0 flex flex-col hidden md:flex min-h-screen">
+    <div class="p-6 border-b border-slate-100 hidden md:block">
+      <div class="flex items-center space-x-3">
+        <span class="text-3xl">📚</span>
+        <div>
+          <h1 class="font-bold text-lg text-slate-900 leading-tight">Multi-PDF ChatBot</h1>
+          <p class="text-xs text-slate-500">Google Gemini & LangChain</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="p-6 space-y-6 flex-1 overflow-y-auto">
+      <!-- Configuration Section -->
+      <div>
+        <h2 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3 flex items-center">
+          <i data-lucide="settings" class="w-4 h-4 mr-1.5"></i> Configuration
+        </h2>
+        
+        <div class="space-y-4">
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Google API Key</label>
+            <div class="relative">
+              <input 
+                type="password" 
+                id="apiKeyInput" 
+                placeholder="Enter Gemini API Key" 
+                class="w-full text-sm px-3 py-2 pr-10 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+              />
+              <button type="button" id="toggleApiKeyBtn" class="absolute right-2 top-2.5 text-slate-400 hover:text-slate-600">
+                <i data-lucide="eye" class="w-4 h-4"></i>
+              </button>
+            </div>
+            <p class="text-xs text-slate-400 mt-1">
+              Get key from <a href="https://aistudio.google.com/" target="_blank" class="text-blue-600 hover:underline">Google AI Studio</a>
+            </p>
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Gemini Model</label>
+            <select id="modelSelect" class="w-full text-sm px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white">
+              <option value="gemini-1.5-flash" selected>gemini-1.5-flash (Fast & Recommended)</option>
+              <option value="gemini-1.5-pro">gemini-1.5-pro (High Reasoning)</option>
+              <option value="gemini-2.0-flash">gemini-2.0-flash (Next Gen)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <hr class="border-slate-100" />
+
+      <!-- Document Management Section -->
+      <div>
+        <h2 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3 flex items-center">
+          <i data-lucide="folder-open" class="w-4 h-4 mr-1.5"></i> Document Management
+        </h2>
+
+        <div class="space-y-3">
+          <!-- Dropzone -->
+          <div 
+            id="dropzone" 
+            class="border-2 border-dashed border-slate-300 hover:border-blue-500 rounded-xl p-4 text-center cursor-pointer transition bg-slate-50/50 hover:bg-blue-50/30"
+          >
+            <input type="file" id="fileInput" multiple accept=".pdf" class="hidden" />
+            <i data-lucide="upload-cloud" class="w-8 h-8 mx-auto text-slate-400 mb-2"></i>
+            <p class="text-xs font-medium text-slate-700">Click to upload or drag & drop</p>
+            <p class="text-xs text-slate-400 mt-0.5">PDF files (multiple allowed)</p>
+          </div>
+
+          <!-- Selected files list -->
+          <div id="fileList" class="space-y-1.5 max-h-40 overflow-y-auto"></div>
+
+          <!-- Submit & Process Button -->
+          <button 
+            id="processBtn" 
+            class="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-medium text-sm rounded-lg shadow-sm transition flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <span id="processBtnSpinner" class="hidden animate-spin">
+              <i data-lucide="loader-2" class="w-4 h-4"></i>
+            </span>
+            <span id="processBtnText">Submit & Process</span>
+          </button>
+
+          <!-- Index Status Badge -->
+          <div id="indexStatus" class="hidden p-3 rounded-lg text-xs"></div>
+
+          <!-- Clear Index Button -->
+          <button 
+            id="clearIndexBtn" 
+            class="hidden w-full py-2 px-3 border border-slate-200 hover:bg-slate-100 text-slate-600 text-xs font-medium rounded-lg transition flex items-center justify-center space-x-1"
+          >
+            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+            <span>Clear Vector Index</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sidebar Footer -->
+    <div class="p-4 border-t border-slate-100 bg-slate-50 text-xs text-slate-500 text-center">
+      Vercel Serverless Ready • LCEL & FAISS
+    </div>
+  </aside>
+
+  <!-- Main Content Area -->
+  <main class="flex-1 flex flex-col p-4 md:p-8 max-w-5xl mx-auto w-full">
+    <div class="mb-6">
+      <h2 class="text-2xl font-bold text-slate-900 flex items-center space-x-2">
+        <span>Chat with PDF using Gemini</span>
+        <span class="text-xl">🧑🏼‍🎓</span>
+      </h2>
+      <p class="text-sm text-slate-500 mt-1">
+        Upload your PDF documents in the sidebar, click process, and ask any questions based on their content.
+      </p>
+    </div>
+
+    <!-- Alert / Toast Banner -->
+    <div id="globalAlert" class="hidden mb-4 p-4 rounded-xl text-sm flex items-start space-x-3"></div>
+
+    <!-- Query Box -->
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 mb-6">
+      <label class="block text-sm font-medium text-slate-700 mb-2">Ask a Question from the PDF Files</label>
+      <div class="flex space-x-2">
+        <input 
+          type="text" 
+          id="questionInput" 
+          placeholder="e.g. What are the key findings mentioned in the document?" 
+          class="flex-1 px-4 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
+        />
+        <button 
+          id="sendBtn" 
+          class="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-medium text-sm rounded-xl shadow-sm transition flex items-center space-x-1.5 disabled:opacity-50"
+        >
+          <span id="sendBtnSpinner" class="hidden animate-spin">
+            <i data-lucide="loader-2" class="w-4 h-4"></i>
+          </span>
+          <span id="sendBtnIcon"><i data-lucide="send" class="w-4 h-4"></i></span>
+          <span class="hidden sm:inline">Ask</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Response Display -->
+    <div id="responseContainer" class="hidden space-y-4">
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+        <div class="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+          <div class="flex items-center space-x-2 text-blue-600 font-semibold text-sm">
+            <i data-lucide="bot" class="w-5 h-5"></i>
+            <span>Gemini Response</span>
+          </div>
+          <button id="copyBtn" class="text-xs text-slate-500 hover:text-slate-800 flex items-center space-x-1 px-2.5 py-1 rounded-md border border-slate-200 hover:bg-slate-50 transition">
+            <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+            <span id="copyBtnText">Copy</span>
+          </button>
+        </div>
+        
+        <!-- Answer Body -->
+        <div id="responseMarkdown" class="prose max-w-none text-slate-800 text-sm leading-relaxed"></div>
+
+        <!-- Retrieved Chunks Collapsible -->
+        <div class="mt-6 pt-4 border-t border-slate-100">
+          <button id="toggleChunksBtn" class="text-xs font-semibold text-slate-500 hover:text-slate-800 flex items-center space-x-1.5">
+            <i data-lucide="chevron-right" id="chunkChevron" class="w-4 h-4 transition-transform"></i>
+            <span>View Retrieved Context Chunks</span>
+          </button>
+          <div id="chunksContent" class="hidden mt-3 space-y-2"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Empty State -->
+    <div id="emptyState" class="flex-1 flex flex-col items-center justify-center text-center p-8 border-2 border-dashed border-slate-200 rounded-2xl">
+      <span class="text-4xl mb-3">📄</span>
+      <h3 class="font-medium text-slate-700">No Document Processed Yet</h3>
+      <p class="text-xs text-slate-400 mt-1 max-w-sm">
+        Provide your Google Gemini API key and upload PDF files using the sidebar to begin chatting with your documents.
+      </p>
+    </div>
+  </main>
+
+  <script>
+    // State management
+    const state = {
+      apiKey: localStorage.getItem('gemini_api_key') || '',
+      model: 'gemini-1.5-flash',
+      files: [],
+      chunks: [],
+      embeddings: [],
+      lastReply: ''
+    };
+
+    // DOM Elements
+    const apiKeyInput = document.getElementById('apiKeyInput');
+    const toggleApiKeyBtn = document.getElementById('toggleApiKeyBtn');
+    const modelSelect = document.getElementById('modelSelect');
+    const dropzone = document.getElementById('dropzone');
+    const fileInput = document.getElementById('fileInput');
+    const fileList = document.getElementById('fileList');
+    const processBtn = document.getElementById('processBtn');
+    const processBtnSpinner = document.getElementById('processBtnSpinner');
+    const processBtnText = document.getElementById('processBtnText');
+    const indexStatus = document.getElementById('indexStatus');
+    const clearIndexBtn = document.getElementById('clearIndexBtn');
+    const questionInput = document.getElementById('questionInput');
+    const sendBtn = document.getElementById('sendBtn');
+    const sendBtnSpinner = document.getElementById('sendBtnSpinner');
+    const sendBtnIcon = document.getElementById('sendBtnIcon');
+    const responseContainer = document.getElementById('responseContainer');
+    const responseMarkdown = document.getElementById('responseMarkdown');
+    const copyBtn = document.getElementById('copyBtn');
+    const copyBtnText = document.getElementById('copyBtnText');
+    const toggleChunksBtn = document.getElementById('toggleChunksBtn');
+    const chunkChevron = document.getElementById('chunkChevron');
+    const chunksContent = document.getElementById('chunksContent');
+    const emptyState = document.getElementById('emptyState');
+    const globalAlert = document.getElementById('globalAlert');
+    const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+    const sidebar = document.getElementById('sidebar');
+
+    // Init UI
+    if (state.apiKey) {
+      apiKeyInput.value = state.apiKey;
+    }
+    lucide.createIcons();
+
+    // Mobile menu toggle
+    mobileMenuBtn.addEventListener('click', () => {
+      sidebar.classList.toggle('hidden');
+    });
+
+    // API Key input change
+    apiKeyInput.addEventListener('input', (e) => {
+      state.apiKey = e.target.value.trim();
+      localStorage.setItem('gemini_api_key', state.apiKey);
+    });
+
+    // Toggle API key visibility
+    toggleApiKeyBtn.addEventListener('click', () => {
+      if (apiKeyInput.type === 'password') {
+        apiKeyInput.type = 'text';
+      } else {
+        apiKeyInput.type = 'password';
+      }
+    });
+
+    // Model selection
+    modelSelect.addEventListener('change', (e) => {
+      state.model = e.target.value;
+    });
+
+    // Dropzone interactions
+    dropzone.addEventListener('click', () => fileInput.click());
+    dropzone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropzone.classList.add('border-blue-500', 'bg-blue-50/50');
+    });
+    dropzone.addEventListener('dragleave', () => {
+      dropzone.classList.remove('border-blue-500', 'bg-blue-50/50');
+    });
+    dropzone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropzone.classList.remove('border-blue-500', 'bg-blue-50/50');
+      handleFiles(e.dataTransfer.files);
+    });
+    fileInput.addEventListener('change', (e) => {
+      handleFiles(e.target.files);
+    });
+
+    function handleFiles(uploaded) {
+      for (const file of uploaded) {
+        if (file.type === 'application/pdf' || file.name.endsWith('.pdf')) {
+          if (!state.files.some(f => f.name === file.name && f.size === file.size)) {
+            state.files.push(file);
+          }
+        }
+      }
+      renderFileList();
+    }
+
+    function renderFileList() {
+      fileList.innerHTML = '';
+      state.files.forEach((file, index) => {
+        const item = document.createElement('div');
+        item.className = 'flex items-center justify-between text-xs bg-slate-100 hover:bg-slate-200/70 p-2 rounded-lg text-slate-700';
+        item.innerHTML = `
+          <div class="flex items-center space-x-1.5 truncate">
+            <span class="text-sm">📄</span>
+            <span class="truncate">${file.name}</span>
+            <span class="text-[10px] text-slate-400">(${(file.size / 1024).toFixed(0)} KB)</span>
+          </div>
+          <button class="text-slate-400 hover:text-red-500 p-0.5" onclick="removeFile(${index})">
+            <i data-lucide="x" class="w-3.5 h-3.5"></i>
+          </button>
+        `;
+        fileList.appendChild(item);
+      });
+      lucide.createIcons();
+    }
+
+    window.removeFile = (idx) => {
+      state.files.splice(idx, 1);
+      renderFileList();
+    };
+
+    function showAlert(type, msg) {
+      globalAlert.className = `mb-4 p-4 rounded-xl text-sm flex items-start space-x-3 ${
+        type === 'error' ? 'bg-red-50 text-red-700 border border-red-200' :
+        type === 'warning' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
+        'bg-emerald-50 text-emerald-700 border border-emerald-200'
+      }`;
+      const icon = type === 'error' ? 'alert-circle' : type === 'warning' ? 'alert-triangle' : 'check-circle-2';
+      globalAlert.innerHTML = `
+        <i data-lucide="${icon}" class="w-5 h-5 flex-shrink-0 mt-0.5"></i>
+        <div>${msg}</div>
+      `;
+      globalAlert.classList.remove('hidden');
+      lucide.createIcons();
+    }
+
+    function hideAlert() {
+      globalAlert.classList.add('hidden');
+    }
+
+    // Process Documents
+    processBtn.addEventListener('click', async () => {
+      hideAlert();
+      if (!state.apiKey) {
+        showAlert('warning', 'Please provide a valid Google Gemini API Key in the sidebar.');
+        apiKeyInput.focus();
+        return;
+      }
+      if (state.files.length === 0) {
+        showAlert('warning', 'Please upload at least one PDF file.');
+        return;
+      }
+
+      // Start loading
+      processBtn.disabled = true;
+      processBtnSpinner.classList.remove('hidden');
+      processBtnText.textContent = 'Processing...';
+
+      const formData = new FormData();
+      state.files.forEach(file => formData.append('files', file));
+      if (state.apiKey) formData.append('api_key', state.apiKey);
+
+      try {
+        const res = await fetch('/api/process', {
+          method: 'POST',
+          body: formData
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.detail || 'Failed to process PDF documents.');
+        }
+
+        state.chunks = data.chunks;
+        state.embeddings = data.embeddings;
+
+        indexStatus.className = 'p-3 rounded-lg text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 block';
+        indexStatus.innerHTML = `✅ Successfully processed <b>${data.filenames.length}</b> file(s) into <b>${data.chunk_count}</b> chunks!`;
+        clearIndexBtn.classList.remove('hidden');
+        emptyState.classList.add('hidden');
+        showAlert('success', `Done! Your documents are embedded and ready. Ask questions below.`);
+      } catch (err) {
+        showAlert('error', err.message);
+      } finally {
+        processBtn.disabled = false;
+        processBtnSpinner.classList.add('hidden');
+        processBtnText.textContent = 'Submit & Process';
+        lucide.createIcons();
+      }
+    });
+
+    // Clear Index
+    clearIndexBtn.addEventListener('click', () => {
+      state.chunks = [];
+      state.embeddings = [];
+      state.files = [];
+      renderFileList();
+      indexStatus.classList.add('hidden');
+      clearIndexBtn.classList.add('hidden');
+      responseContainer.classList.add('hidden');
+      emptyState.classList.remove('hidden');
+      showAlert('info', 'Vector index cleared.');
+    });
+
+    // Send Query
+    async function submitQuestion() {
+      const q = questionInput.value.trim();
+      if (!q) return;
+
+      if (!state.apiKey) {
+        showAlert('warning', 'Please provide your Google Gemini API Key in the sidebar.');
+        return;
+      }
+
+      if (state.chunks.length === 0) {
+        showAlert('warning', 'Please upload and process PDF files first before asking questions.');
+        return;
+      }
+
+      hideAlert();
+      sendBtn.disabled = true;
+      sendBtnSpinner.classList.remove('hidden');
+      sendBtnIcon.classList.add('hidden');
+
+      try {
+        const res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            question: q,
+            chunks: state.chunks,
+            embeddings: state.embeddings,
+            model_name: state.model,
+            api_key: state.apiKey
+          })
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.detail || 'Error generating answer.');
+        }
+
+        state.lastReply = data.reply;
+        responseMarkdown.innerHTML = marked.parse(data.reply);
+        
+        // Render retrieved chunks
+        chunksContent.innerHTML = '';
+        data.retrieved_chunks.forEach((chunk, idx) => {
+          const div = document.createElement('div');
+          div.className = 'p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-600 leading-relaxed font-mono';
+          div.innerHTML = `<span class="font-bold text-slate-800">Chunk ${idx + 1}:</span> ${chunk.substring(0, 400)}${chunk.length > 400 ? '...' : ''}`;
+          chunksContent.appendChild(div);
+        });
+
+        responseContainer.classList.remove('hidden');
+        emptyState.classList.add('hidden');
+      } catch (err) {
+        showAlert('error', err.message);
+      } finally {
+        sendBtn.disabled = false;
+        sendBtnSpinner.classList.add('hidden');
+        sendBtnIcon.classList.remove('hidden');
+        lucide.createIcons();
+      }
+    }
+
+    sendBtn.addEventListener('click', submitQuestion);
+    questionInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') submitQuestion();
+    });
+
+    // Copy Response
+    copyBtn.addEventListener('click', () => {
+      if (!state.lastReply) return;
+      navigator.clipboard.writeText(state.lastReply).then(() => {
+        copyBtnText.textContent = 'Copied!';
+        setTimeout(() => { copyBtnText.textContent = 'Copy'; }, 2000);
+      });
+    });
+
+    // Toggle Chunks
+    toggleChunksBtn.addEventListener('click', () => {
+      const isHidden = chunksContent.classList.contains('hidden');
+      chunksContent.classList.toggle('hidden');
+      chunkChevron.style.transform = isHidden ? 'rotate(90deg)' : 'rotate(0deg)';
+    });
+  </script>
+</body>
+</html>
